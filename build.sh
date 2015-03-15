@@ -69,6 +69,55 @@ build_kernel() {
     cp ${KERNEL_OUT_DIR}/arch/arm/boot/zImage ${CUR_DIR}/${TEMP_DIR}
 }
 
+# create kernel zip after successfull build
+create_kernel_zip()
+{
+    echo -e "${txtylw}Creating kernel zip...${txtrst}"
+    if [ -e ${OUT_DIR}/boot.img ]; then
+        echo -e "${txtgrn}Bootimage found...${txtrst}"
+        if [ -e ${CUR_DIR}/updater/${ARG1}/kernel_updater-script ]; then
+            cd ${CUR_DIR}
+
+            rm -f ${CUR_DIR}/${OUT_DIR}/kernel-${ARG1}-*
+
+            mkdir -p ${CUR_DIR}/${TEMP_DIR}/kernel_zip/system/lib/modules
+            mkdir -p ${CUR_DIR}/${TEMP_DIR}/kernel_zip/META-INF/com/google/android
+
+            echo "Copying boot.img..."
+            cp ${CUR_DIR}/${OUT_DIR}/boot.img ${CUR_DIR}/${TEMP_DIR}/kernel_zip/
+
+            echo "Copying kernel modules..."
+            find out/target/product/hi3630/obj/KERNEL_OBJ/ -type f -iname "*.ko" -print0 | while IFS= read -r -d $'\0' line; do
+                cp "${line}" ${CUR_DIR}/${TEMP_DIR}/kernel_zip/system/lib/modules/    
+            done
+
+            echo "Copying update-binary..."
+            cp ${CUR_DIR}/updater/updater ${CUR_DIR}/${TEMP_DIR}/kernel_zip/META-INF/com/google/android/update-binary
+            echo "Copying updater-script..."
+            cat ${CUR_DIR}/updater/${ARG1}/kernel_updater-script > ${CUR_DIR}/${TEMP_DIR}/kernel_zip/META-INF/com/google/android/updater-script
+                
+            echo "Zipping package..."
+            cd ${CUR_DIR}/${TEMP_DIR}/kernel_zip
+            zip -qr ../kernel-${ARG1}-$(date +%Y%m%d).zip ./
+
+            echo "Signing package..."
+            cd ${CUR_DIR}/${TEMP_DIR}
+            java -jar ${CUR_DIR}/updater/signapk.jar ${CUR_DIR}/updater/testkey.x509.pem ${CUR_DIR}/updater/testkey.pk8 ${CUR_DIR}/${TEMP_DIR}/kernel-${ARG1}-$(date +%Y%m%d).zip ${CUR_DIR}/${OUT_DIR}/kernel-${ARG1}-$(date +%Y%m%d)-signed.zip
+            rm -f ${CUR_DIR}/${TEMP_DIR}/kernel-${ARG1}-*
+            rm -rf ${CUR_DIR}/${TEMP_DIR}/kernel_zip
+            echo -e "${txtgrn}Package complete:${txtrst} out/kernel-${ARG1}-$(date +%Y%m%d)-signed.zip"
+            md5sum ${CUR_DIR}/${OUT_DIR}/kernel-${ARG1}-$(date +%Y%m%d)-signed.zip
+            cd ${CUR_DIR}
+        else
+            echo -e "${txtred}No instructions to create kernel-${ARG1}-$(date +%Y%m%d)-signed.zip... skipping."
+            echo -e "\r\n ${txtrst}"
+        fi
+    else
+        echo -e "${txtred}Bootimage not found... skipping."
+        echo -e "\r\n ${txtrst}"
+    fi
+}
+
 case "$CMD" in
     clean)
         echo -e "${txtylw}Cleaning ..."
@@ -150,6 +199,9 @@ case "$CMD" in
         
         echo -e "${txtgrn}Done! -> ${OUT_DIR}/boot.img"
         echo -e "${txtrst}"
+        
+        create_kernel_zip
+
         ;;
     unpack)
         if [ -z "${ARG1}" ]; then
